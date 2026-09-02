@@ -1,0 +1,13 @@
+[project]
+name = "microcorn"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "asyncio>=4.0.0",
+    "h11>=0.16.0",
+    "starlette>=1.6.0",
+    "uvicorn>=0.52.4",
+    "uvloop>=0.22.1",
+]
