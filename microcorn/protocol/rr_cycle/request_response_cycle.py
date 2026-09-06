@@ -97,6 +97,6 @@ class RequestResponseCycle(RRCycle):
         self.body = bytearray()
         return response
 
-    def run_asgi(self):
-        print("hello world")
-        pass
+    async def run_asgi(self):
+        future = asyncio.Future()
+        await future
