@@ -1,12 +1,46 @@
-from asyncio import Event
+import asyncio
+from asyncio import Event, Transport
 from typing import Union
+from urllib.parse import unquote
 
 import h11
 from h11 import NEED_DATA, PAUSED, RemoteProtocolError
 
+from microcorn.protocol.rr_cycle.request_response_cycle import RequestResponseCycle
+from microcorn.protocol.rr_cycle.types import ASGIVersions, RequestScope
 from microcorn.protocol.transport_flow import TransportFlow
 
 EventType = Union[Event, type[NEED_DATA], type[PAUSED]]
+
+
+def get_transport_address(transport: Transport, name: str) -> tuple[str, int] | None:
+    try:
+        info = transport.get_extra_info(name)
+        if info is not None and isinstance(info, (list, tuple)) and len(info) == 2:
+            return str(info[0]), int(info[1])
+        return None
+    except OSError:
+        print("error")
+
+
+def get_scope(event: h11.Request) -> RequestScope:
+    headers = event.headers
+    raw_path, _, query_string = event.target.partition(b"?")
+
+    return RequestScope(
+        headers=headers,
+        method=event.method.decode("utf-8"),
+        http_version=event.http_version.decode("utf-8"),
+        query_string=query_string,
+        raw_path=raw_path,
+        asgi=ASGIVersions(spec_version="2.3", version="2.0"),
+        client=None,
+        server=None,
+        path=unquote(raw_path.decode("ascii")),
+        scheme="http",
+        root_path="",
+        type="http",
+    )
 
 
 class EventHandler:
@@ -14,6 +48,14 @@ class EventHandler:
         self.conn: h11.Connection = conn
         self.flow = flow
         self.body = ""
+        self.cycle: RequestResponseCycle | None = None
+
+        self.client: tuple[str, int] | None = get_transport_address(
+            self.flow.transport, "peername"
+        )
+        self.server: tuple[str, int] | None = get_transport_address(
+            self.flow.transport, "sockname"
+        )
 
     def handle_events(self):
         while True:
@@ -30,35 +72,27 @@ class EventHandler:
 
             elif isinstance(event, h11.Request):
                 headers = event.headers
-                print(event.target)
-                print(event.headers)
-                print(event.method)
+                raw_path, _, query_string = event.target.partition(b"?")
+                scope = get_scope(event)
+                self.cycle = RequestResponseCycle(
+                    conn=self.conn, flow=self.flow, scope=scope, event=asyncio.Event()
+                )
+                print(scope)
+                assert self.cycle
+                self.cycle.run_asgi()
 
             elif isinstance(event, h11.Data):
-                self.body += event.data.decode("utf-8")
-                print(self.body)
+                assert self.cycle
+                if self.conn.our_state is h11.DONE:
+                    continue
+                self.cycle.body += event.data
+                self.cycle.message_event.set()
 
             elif isinstance(event, h11.EndOfMessage):
-                response_body = (
-                    f"Echoed request body:\n{self.body}\nMethod: {self.conn.our_role}\n"
-                ).encode("utf-8")
-                h11_response = h11.Response(
-                    status_code=200,
-                    headers=[
-                        (b"content-type", b"text/plain"),
-                        (b"server", b"microcorn-test"),
-                        (b"x-test-header", b"random-value-123"),
-                        (b"content-length", str(len(response_body)).encode("ascii")),
-                    ],
-                )
-                output = self.conn.send(event=h11_response)
-                self.flow.write(output)
-                output = self.conn.send(event=h11.Data(data=response_body))
-                self.flow.write(output)
-                output = self.conn.send(event=h11.EndOfMessage())
-                self.flow.write(output)
-                self.body = ""
-                break
+                self.cycle.more_body = False
+                self.cycle.message_event.set()
+                if self.conn.their_state == h11.MUST_CLOSE:
+                    break
 
 
 """
