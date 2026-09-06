@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import AbstractEventLoop
 
 import h11
 
@@ -7,11 +8,13 @@ from microcorn.protocol.transport_flow import TransportFlow
 
 
 class H11Protocol(asyncio.Protocol):
-    def __init__(self):
+    def __init__(self, loop: AbstractEventLoop | None = None):
         self.transport: asyncio.Transport | None = None
         self.conn = h11.Connection(our_role=h11.SERVER)
         self.event_handler: EventHandler | None = None
         self.__transport_flow: TransportFlow | None = None
+        self.loop: AbstractEventLoop | None = loop
+        print(self.loop)
 
     def __get_transport_flow__(self) -> TransportFlow:
         assert self.transport is not None
