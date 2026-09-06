@@ -1,10 +1,11 @@
 import asyncio
-from asyncio import Event, Transport
+from asyncio import Event, Transport, AbstractEventLoop, Task
 from typing import Union
 from urllib.parse import unquote
 
 import h11
 from h11 import NEED_DATA, PAUSED, RemoteProtocolError
+from uvicorn.server import ServerState
 
 from microcorn.protocol.rr_cycle.request_response_cycle import RequestResponseCycle
 from microcorn.protocol.rr_cycle.types import ASGIVersions, RequestScope
@@ -44,7 +45,13 @@ def get_scope(event: h11.Request) -> RequestScope:
 
 
 class EventHandler:
-    def __init__(self, conn: h11.Connection, flow: TransportFlow):
+    def __init__(
+        self,
+        conn: h11.Connection,
+        flow: TransportFlow,
+        tasks: set[Task[None]],
+        loop: AbstractEventLoop,
+    ):
         self.conn: h11.Connection = conn
         self.flow = flow
         self.body = ""
@@ -56,6 +63,8 @@ class EventHandler:
         self.server: tuple[str, int] | None = get_transport_address(
             self.flow.transport, "sockname"
         )
+        self.loop = loop
+        self.tasks = tasks
 
     def handle_events(self):
         while True:
@@ -79,7 +88,10 @@ class EventHandler:
                 )
                 print(scope)
                 assert self.cycle
-                self.cycle.run_asgi()
+                task = self.loop.create_task(self.cycle.run_asgi())
+                task.add_done_callback(self.tasks.discard)
+                self.tasks.add(task)
+                print(self.tasks)
 
             elif isinstance(event, h11.Data):
                 assert self.cycle
