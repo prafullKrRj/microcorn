@@ -5,10 +5,9 @@ from urllib.parse import unquote
 
 import h11
 from h11 import NEED_DATA, PAUSED, RemoteProtocolError
-from uvicorn.server import ServerState
 
 from microcorn.protocol.rr_cycle.request_response_cycle import RequestResponseCycle
-from microcorn.protocol.rr_cycle.types import ASGIVersions, RequestScope
+from microcorn.types import ASGIVersions, RequestScope
 from microcorn.protocol.transport_flow import TransportFlow
 
 EventType = Union[Event, type[NEED_DATA], type[PAUSED]]

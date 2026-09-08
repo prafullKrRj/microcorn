@@ -57,4 +57,36 @@ class HTTPSendResponseEvent(TypedDict):
     more_body: NotRequired[bool]
 
 
+class LifespanScope(TypedDict):
+    type: Literal["lifespan"]
+    asgi: ASGIVersions
+    state: NotRequired[dict[str, Any]]
+
+
+class LifespanStartupEvent(TypedDict):
+    type: Literal["lifespan.startup"]
+
+
+class LifespanShutdownEvent(TypedDict):
+    type: Literal["lifespan.shutdown"]
+
+
+class LifespanStartupCompleteEvent(TypedDict):
+    type: Literal["lifespan.startup.complete"]
+
+
+class LifespanStartupFailedEvent(TypedDict):
+    type: Literal["lifespan.startup.failed"]
+    message: str
+
+
+class LifespanShutdownCompleteEvent(TypedDict):
+    type: Literal["lifespan.shutdown.complete"]
+
+
+class LifespanShutdownFailedEvent(TypedDict):
+    type: Literal["lifespan.shutdown.failed"]
+    message: str
+
+
 HTTPSendEvent = HTTPSendResponseEvent | HTTPSendStartEvent

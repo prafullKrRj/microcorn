@@ -29,9 +29,10 @@ class H11Protocol(asyncio.Protocol):
     def connection_made(self, transport: asyncio.Transport) -> None:
         self.transport = transport
         self.__get_transport_flow__()
+        self.server_state.connections.add(self)
 
     def connection_lost(self, exc: Exception | None) -> None:
-        pass
+        self.server_state.connections.remove(self)
 
     def data_received(self, data: bytes) -> None:
         try:

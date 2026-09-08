@@ -4,7 +4,7 @@ from abc import ABC
 
 import h11
 
-from microcorn.protocol.rr_cycle.types import (
+from microcorn.types import (
     HTTPReceiveEvent,
     HTTPSendEvent,
     RequestScope,
