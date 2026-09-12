@@ -2,6 +2,30 @@
 
 Small ASGI server I'm building.
 
+## Run a Starlette app
+
+Install package in your application environment, then run target from that application's directory:
+
+```bash
+uv add /path/to/microcorn
+microcorn main:app
+```
+
+`main.py` must expose a callable ASGI app, for example:
+
+```python
+from starlette.applications import Starlette
+from starlette.responses import PlainTextResponse
+from starlette.routing import Route
+
+async def homepage(request):
+    return PlainTextResponse("Hello from Starlette")
+
+app = Starlette(routes=[Route("/", homepage)])
+```
+
+Useful options: `--host`, `--port`, `--workers`, and `--app-dir`.
+
 ## What is ASGI?
 
 **ASGI** (Asynchronous Server Gateway Interface) is the Python standard interface between async-capable web servers and Python web applications/frameworks.

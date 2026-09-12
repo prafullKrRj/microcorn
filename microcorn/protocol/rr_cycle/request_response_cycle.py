@@ -4,7 +4,7 @@ from abc import ABC
 
 import h11
 
-from microcorn.types import (
+from microcorn._types import (
     HTTPReceiveEvent,
     HTTPSendEvent,
     RequestScope,
@@ -39,6 +39,7 @@ class RequestResponseCycle(RRCycle):
         conn: h11.Connection,
         flow: TransportFlow,
         event: asyncio.Event,
+        application=None,
     ):
         self.flow = flow
         self.scope: RequestScope = scope
@@ -48,6 +49,8 @@ class RequestResponseCycle(RRCycle):
         self.message_event: asyncio.Event = event
         self.body: bytes = bytearray()
         self.more_body = True
+        self.application = application
+        self.scope.setdefault("state", {})
 
     async def send(self, event: HTTPSendEvent) -> None:
         if not self.response_started:
@@ -98,5 +101,17 @@ class RequestResponseCycle(RRCycle):
         return response
 
     async def run_asgi(self):
-        future = asyncio.Future()
-        await future
+        try:
+            await self.application(self.scope, self.receive, self.send)
+        except Exception:  # noqa: BLE001 - convert app failure to HTTP 500
+            if not self.response_started:
+                await self.send(
+                    {
+                        "type": "http.response.start",
+                        "status": 500,
+                        "headers": [(b"content-type", b"text/plain; charset=utf-8")],
+                    }
+                )
+                await self.send(
+                    {"type": "http.response.body", "body": b"Internal Server Error"}
+                )

@@ -1,16 +1,16 @@
 import asyncio
-from asyncio import Event, Transport, AbstractEventLoop, Task
-from typing import Union
+from asyncio import AbstractEventLoop, Event, Task, Transport
 from urllib.parse import unquote
 
 import h11
 from h11 import NEED_DATA, PAUSED, RemoteProtocolError
 
+from microcorn._types import ASGIVersions, RequestScope
 from microcorn.protocol.rr_cycle.request_response_cycle import RequestResponseCycle
-from microcorn.types import ASGIVersions, RequestScope
 from microcorn.protocol.transport_flow import TransportFlow
+from microcorn.server_state import ServerState
 
-EventType = Union[Event, type[NEED_DATA], type[PAUSED]]
+EventType = Event | type[NEED_DATA] | type[PAUSED]
 
 
 def get_transport_address(transport: Transport, name: str) -> tuple[str, int] | None:
@@ -23,7 +23,12 @@ def get_transport_address(transport: Transport, name: str) -> tuple[str, int] | 
         print("error")
 
 
-def get_scope(event: h11.Request) -> RequestScope:
+def get_scope(
+    event: h11.Request,
+    client: tuple[str, int] | None = None,
+    server: tuple[str, int] | None = None,
+    state: dict | None = None,
+) -> RequestScope:
     headers = event.headers
     raw_path, _, query_string = event.target.partition(b"?")
 
@@ -34,12 +39,13 @@ def get_scope(event: h11.Request) -> RequestScope:
         query_string=query_string,
         raw_path=raw_path,
         asgi=ASGIVersions(spec_version="2.3", version="2.0"),
-        client=None,
-        server=None,
+        client=client,
+        server=server,
         path=unquote(raw_path.decode("ascii")),
         scheme="http",
         root_path="",
         type="http",
+        state=state if state is not None else {},
     )
 
 
@@ -50,9 +56,17 @@ class EventHandler:
         flow: TransportFlow,
         tasks: set[Task[None]],
         loop: AbstractEventLoop,
+        application=None,
+        application_state: dict | None = None,
+        server_state: ServerState | None = None,
     ):
         self.conn: h11.Connection = conn
         self.flow = flow
+        self.application = application
+        self.application_state = (
+            application_state if application_state is not None else {}
+        )
+        self.server_state = server_state
         self.body = ""
         self.cycle: RequestResponseCycle | None = None
 
@@ -79,18 +93,27 @@ class EventHandler:
                 break
 
             elif isinstance(event, h11.Request):
-                headers = event.headers
-                raw_path, _, query_string = event.target.partition(b"?")
-                scope = get_scope(event)
-                self.cycle = RequestResponseCycle(
-                    conn=self.conn, flow=self.flow, scope=scope, event=asyncio.Event()
+                scope = get_scope(
+                    event,
+                    client=self.client,
+                    server=self.server,
+                    state=self.application_state,
                 )
-                print(scope)
+                self.cycle = RequestResponseCycle(
+                    conn=self.conn,
+                    flow=self.flow,
+                    scope=scope,
+                    event=asyncio.Event(),
+                    application=self.application,
+                )
                 assert self.cycle
                 task = self.loop.create_task(self.cycle.run_asgi())
-                task.add_done_callback(self.tasks.discard)
-                self.tasks.add(task)
-                print(self.tasks)
+                if self.server_state is not None:
+                    self.server_state.add_task(task)
+                    self.server_state.total_requests += 1
+                else:
+                    task.add_done_callback(self.tasks.discard)
+                    self.tasks.add(task)
 
             elif isinstance(event, h11.Data):
                 assert self.cycle

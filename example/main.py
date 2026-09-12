@@ -15,7 +15,7 @@ app = Starlette(
 )
 
 
-async def app(scope, receive, send):
+async def raw_app(scope, receive, send):
     print("we are here")
     print(scope, receive, send)
     return "Hello World"
