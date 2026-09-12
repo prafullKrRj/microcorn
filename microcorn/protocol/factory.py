@@ -1,5 +1,5 @@
 from asyncio import BaseProtocol
-from typing import Callable
+from collections.abc import Callable
 
 from microcorn.protocol.h11 import H11Protocol
 

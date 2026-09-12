@@ -10,7 +10,10 @@ from microcorn.server_state import ServerState
 
 class H11Protocol(asyncio.Protocol):
     def __init__(
-        self, server_state: ServerState, loop: AbstractEventLoop | None = None
+        self,
+        server_state: ServerState,
+        loop: AbstractEventLoop | None = None,
+        application=None,
     ):
         self.transport: asyncio.Transport | None = None
         self.conn = h11.Connection(our_role=h11.SERVER)
@@ -18,7 +21,7 @@ class H11Protocol(asyncio.Protocol):
         self.__transport_flow: TransportFlow | None = None
         self.loop: AbstractEventLoop | None = loop
         self.server_state: ServerState = server_state
-        print(self.loop)
+        self.application = application
 
     def __get_transport_flow__(self) -> TransportFlow:
         assert self.transport is not None
@@ -32,7 +35,7 @@ class H11Protocol(asyncio.Protocol):
         self.server_state.connections.add(self)
 
     def connection_lost(self, exc: Exception | None) -> None:
-        self.server_state.connections.remove(self)
+        self.server_state.connections.discard(self)
 
     def data_received(self, data: bytes) -> None:
         try:
@@ -41,12 +44,15 @@ class H11Protocol(asyncio.Protocol):
                 self.event_handler = EventHandler(
                     conn=self.conn,
                     flow=self.__get_transport_flow__(),
+                    application=self.application,
+                    application_state=self.server_state.application_state,
+                    server_state=self.server_state,
                     tasks=self.server_state.tasks,
                     loop=self.loop,
                 )
             assert self.event_handler is not None
             self.event_handler.handle_events()
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001 - protocol boundary must stay alive
             print(ex)
 
     def pause_writing(self) -> None:
